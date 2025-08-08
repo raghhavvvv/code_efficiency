@@ -1,0 +1,112 @@
+// server/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  username      String   @unique
+  email         String   @unique
+  passwordHash  String
+  role          String   @default("user")
+  netScore      Float    @default(0.0)
+  lastActive    DateTime @default(now())
+  sessions      CodingSession[]
+}
+
+model CodingSession {
+  id             Int      @id @default(autoincrement())
+  startTime      DateTime @default(now())
+  endTime        DateTime?
+  codeSubmitted  String?
+  netScore       Float?   @default(0.0)
+  user           User     @relation(fields: [userId], references: [id])
+  userId         Int
+  challenge      Challenge? @relation(fields: [challengeId], references: [id])
+  challengeId    Int?
+  keystrokeMetrics KeystrokeMetrics?
+  idleMetrics      IdleMetrics?
+  focusMetrics     FocusMetrics?
+  errorMetrics     ErrorMetrics?
+  taskMetrics      TaskMetrics?
+  pasteEvents      PasteEvent[]
+}
+
+model Challenge {
+  id                       Int      @id @default(autoincrement())
+  title                    String
+  description              String
+  difficulty               String
+  expectedCompletionTime   Int
+  optimalKeywords          String
+  language                 String   @default("javascript")
+  sessions                 CodingSession[]
+}
+
+// All the metric models...
+// (Pasting them here for completeness)
+
+model KeystrokeMetrics {
+  id               Int      @id @default(autoincrement())
+  session          CodingSession @relation(fields: [sessionId], references: [id])
+  sessionId        Int      @unique
+  keystrokeCount   Int      @default(0)
+  backspaceCount   Int      @default(0)
+  typingSpeed      Float    @default(0.0)
+  keystrokeLog     Json
+  efficiencyScore  Float?
+}
+
+model IdleMetrics {
+  id               Int      @id @default(autoincrement())
+  session          CodingSession @relation(fields: [sessionId], references: [id])
+  sessionId        Int      @unique
+  totalIdleTime    Int      @default(0)
+  idlePeriods      Json
+  efficiencyScore  Float?
+}
+
+model FocusMetrics {
+  id               Int      @id @default(autoincrement())
+  session          CodingSession @relation(fields: [sessionId], references: [id])
+  sessionId        Int      @unique
+  totalFocusTime   Int      @default(0)
+  contextSwitches  Int      @default(0)
+  efficiencyScore  Float?
+}
+
+model ErrorMetrics {
+  id               Int      @id @default(autoincrement())
+  session          CodingSession @relation(fields: [sessionId], references: [id])
+  sessionId        Int      @unique
+  errorFrequency   Int      @default(0)
+  repeatedErrors   Int      @default(0)
+  avgTimeToFix     Float    @default(0.0)
+  errorLog         Json
+  efficiencyScore  Float?
+}
+
+model TaskMetrics {
+  id               Int      @id @default(autoincrement())
+  session          CodingSession @relation(fields: [sessionId], references: [id])
+  sessionId        Int      @unique
+  completionTime   Int?
+  timeRatio        Float?
+  keywordMatching  Float?
+  efficiencyScore  Float?
+}
+
+model PasteEvent {
+  id           Int      @id @default(autoincrement())
+  session      CodingSession @relation(fields: [sessionId], references: [id])
+  sessionId    Int
+  timestamp    DateTime @default(now())
+  pasteLength  Int
+  pasteContent String
+}
