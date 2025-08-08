@@ -1,9 +1,10 @@
-// src/components/Navbar.jsx
+// client/src/components/Navbar.jsx
 import React from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { Link, NavLink } from 'react-router-dom'; // Use NavLink for active styles
+import { Link, NavLink } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCode, faSignOutAlt, faTachometerAlt, faChartLine } from '@fortawesome/free-solid-svg-icons'; // Import new icons
+// THIS IS THE CORRECTED IMPORT LINE:
+import { faCode, faSignOutAlt, faTachometerAlt, faChartLine, faTasks } from '@fortawesome/free-solid-svg-icons';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -27,6 +28,9 @@ const Navbar = () => {
             <div className="flex items-center gap-6 text-gray-300">
                <NavLink to="/" end className="flex items-center gap-2 hover:text-white transition-colors pb-1" style={({ isActive }) => isActive ? activeLinkStyle : undefined}>
                     <FontAwesomeIcon icon={faTachometerAlt} /> Dashboard
+               </NavLink>
+               <NavLink to="/challenges" className="flex items-center gap-2 hover:text-white transition-colors pb-1" style={({ isActive }) => isActive ? activeLinkStyle : undefined}>
+                    <FontAwesomeIcon icon={faTasks} /> Challenges
                </NavLink>
                <NavLink to="/stats" className="flex items-center gap-2 hover:text-white transition-colors pb-1" style={({ isActive }) => isActive ? activeLinkStyle : undefined}>
                     <FontAwesomeIcon icon={faChartLine} /> My Stats

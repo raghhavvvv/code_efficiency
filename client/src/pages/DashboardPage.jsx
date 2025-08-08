@@ -1,5 +1,6 @@
-// src/pages/DashboardPage.jsx
+// client/src/pages/DashboardPage.jsx
 import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar.jsx';
 import CodeEditor from '../components/CodeEditor.jsx';
 import ToastNotification from '../components/ToastNotification.jsx';
@@ -30,6 +31,9 @@ const formatTime = (seconds) => {
 
 // --- Component ---
 const DashboardPage = () => {
+    const { challengeId } = useParams();
+    const navigate = useNavigate();
+
     // Session State
     const [isSessionActive, setIsSessionActive] = useState(false);
     const [sessionId, setSessionId] = useState(null);
@@ -37,7 +41,7 @@ const DashboardPage = () => {
     const [challenge, setChallenge] = useState(null);
 
     // IDE State
-    const [code, setCode] = useState('// Start a session and begin coding!');
+    const [code, setCode] = useState('// Select a challenge to begin');
     const [output, setOutput] = useState({ text: 'Output will appear here.', type: 'info' });
     const [language, setLanguage] = useState(LANGUAGES[0].value);
     const [isRunning, setIsRunning] = useState(false);
@@ -48,16 +52,35 @@ const DashboardPage = () => {
 
     // --- Hooks for Data Collection ---
     const handlePasteDetected = (pasteLength) => {
-        setToast({
-            show: true,
-            message: `Paste detected: ${pasteLength} characters were pasted.`,
-        });
+        setToast({ show: true, message: `Paste detected: ${pasteLength} characters were pasted.` });
     };
 
     const { handleKeyDown, sendKeystrokeData, keyCount, resetKeyCount } = useKeystrokeTracker(sessionId, isSessionActive);
     const { handleFocus, handleBlur } = useFocusTracker(sessionId, isSessionActive);
     const { handlePaste } = usePasteTracker(sessionId, isSessionActive, handlePasteDetected);
     useIdleTimer(sessionId, isSessionActive);
+
+    // Effect to fetch challenge details when challengeId from URL changes
+    useEffect(() => {
+        const fetchChallengeDetails = async () => {
+            if (challengeId) {
+                setIsSessionActive(false); // Ensure no session is active when loading a new challenge
+                try {
+                    const { data } = await api.get(`/api/challenges/${challengeId}`);
+                    setChallenge(data);
+                    setLanguage(data.language || LANGUAGES[0].value);
+                    setCode(`// ${data.title}\n// ${data.description}\n\n`);
+                } catch (error) {
+                    console.error("Failed to fetch challenge details", error);
+                    navigate('/challenges'); // Redirect if challenge not found
+                }
+            } else {
+                setChallenge(null);
+                setCode('// Select a challenge from the Challenges page to get started!');
+            }
+        };
+        fetchChallengeDetails();
+    }, [challengeId, navigate]);
 
     // Timer effect
     useEffect(() => {
@@ -66,19 +89,17 @@ const DashboardPage = () => {
             interval = setInterval(() => {
                 setElapsedTime(prevTime => prevTime + 1);
             }, 1000);
-        } else {
-            clearInterval(interval);
         }
         return () => clearInterval(interval);
     }, [isSessionActive]);
 
     const startSession = async () => {
+        if (!challengeId) return;
         try {
-            const { data } = await api.post('/api/coding-session/start', { challengeId: 1 });
+            const { data } = await api.post('/api/coding-session/start', { challengeId: parseInt(challengeId, 10) });
             setSessionId(data.sessionId);
             setSessionResult(null);
             setOutput({ text: "Click 'Run Code' to see the output.", type: 'info' });
-            setCode('');
             resetKeyCount();
             setElapsedTime(0);
             setIsSessionActive(true);
@@ -93,7 +114,6 @@ const DashboardPage = () => {
             const { data } = await api.post(`/api/coding-session/${sessionId}/end`, { codeSubmitted: code });
             setSessionResult(data);
             setSessionId(null);
-            setCode('// Session ended. Start a new one to continue.');
         } catch (error) { console.error("Failed to end session", error); }
     };
     
@@ -135,8 +155,8 @@ const DashboardPage = () => {
                 {/* Top Control Panel */}
                 <div className="bg-gray-800 p-4 rounded-xl shadow-lg flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold">Your Dashboard</h1>
-                        <p className="text-gray-400 text-sm">{isSessionActive ? "Coding session in progress..." : "Start a session to begin a challenge."}</p>
+                        <h1 className="text-2xl font-bold">{challenge ? challenge.title : 'Dashboard'}</h1>
+                        <p className="text-gray-400 text-sm">{challenge ? challenge.description : "Select a problem from the Challenges page."}</p>
                     </div>
 
                     {isSessionActive && (
@@ -158,54 +178,56 @@ const DashboardPage = () => {
                         </div>
                     )}
 
-                     {!isSessionActive ? (
-                        <button onClick={startSession} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2 transition-transform transform hover:scale-105">
-                            <FontAwesomeIcon icon={faPlay} /> Start New Session
+                    { !isSessionActive ? (
+                        <button 
+                            onClick={startSession} 
+                            disabled={!challengeId}
+                            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2 transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        >
+                            <FontAwesomeIcon icon={faPlay} /> Start Session
                         </button>
                     ) : (
                         <button onClick={endSession} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2 transition-transform transform hover:scale-105">
-                           <FontAwesomeIcon icon={faStop} /> End & Submit Session
+                           <FontAwesomeIcon icon={faStop} /> End & Submit
                         </button>
                     )}
                 </div>
 
                 {/* Main IDE Area */}
                 <div className="flex-grow bg-gray-800 p-4 rounded-xl shadow-lg flex flex-col">
-                    <div className="flex items-center justify-end mb-2 p-2 bg-gray-900/50 rounded-t-lg border-b border-gray-700">
-                         <div className="flex items-center space-x-4">
-                             <select value={language} onChange={(e) => setLanguage(e.target.value)} className="bg-gray-700 border border-gray-600 text-white px-3 py-1.5 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm" disabled={!isSessionActive}>
-                                {LANGUAGES.map(lang => <option key={lang.value} value={lang.value}>{lang.name}</option>)}
-                            </select>
-                            <button onClick={runCode} disabled={!isSessionActive || isRunning} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm">
-                                {isRunning ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : <FontAwesomeIcon icon={faCogs} />}
-                                <span>Run Code</span>
-                            </button>
+                    {challenge ? (
+                        <>
+                            <div className="flex items-center justify-end mb-2 p-2 bg-gray-900/50 rounded-t-lg border-b border-gray-700">
+                                <div className="flex items-center space-x-4">
+                                    <select value={language} onChange={(e) => setLanguage(e.target.value)} className="bg-gray-700 border border-gray-600 text-white px-3 py-1.5 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm">
+                                        {LANGUAGES.map(lang => <option key={lang.value} value={lang.value}>{lang.name}</option>)}
+                                    </select>
+                                    <button onClick={runCode} disabled={!isSessionActive || isRunning} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm">
+                                        {isRunning ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : <FontAwesomeIcon icon={faCogs} />}
+                                        <span>Run Code</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-4 min-h-[55vh]">
+                                <div className="bg-gray-900 rounded-b-lg overflow-hidden border border-gray-700">
+                                    <CodeEditor language={language} code={code} setCode={setCode} isSessionActive={isSessionActive} onKeyDown={handleKeyDown} onFocus={handleFocus} onBlur={handleBlur} onPaste={handlePaste} />
+                                </div>
+                                <div className="bg-gray-900 rounded-lg border border-gray-700 flex flex-col">
+                                    <div className="text-sm font-semibold p-2.5 bg-gray-900/50 rounded-t-lg border-b border-gray-700">Output</div>
+                                    <pre className={`w-full flex-grow p-4 font-mono text-sm overflow-y-auto whitespace-pre-wrap ${output.type === 'error' ? 'text-red-400' : 'text-gray-300'}`}>{output.text}</pre>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex-grow flex flex-col items-center justify-center text-center">
+                            <h2 className="text-2xl font-bold text-gray-400">Welcome to your Dashboard</h2>
+                            <p className="text-gray-500 mt-2">Please <Link to="/challenges" className="text-cyan-400 hover:underline font-semibold">select a challenge</Link> to begin a coding session.</p>
                         </div>
-                    </div>
-                    <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-4 min-h-[55vh]">
-                        <div className="bg-gray-900 rounded-b-lg overflow-hidden border border-gray-700">
-                             <CodeEditor 
-                                language={language} 
-                                code={code} 
-                                setCode={setCode} 
-                                isSessionActive={isSessionActive} 
-                                onKeyDown={handleKeyDown} 
-                                onFocus={handleFocus} 
-                                onBlur={handleBlur}
-                                onPaste={handlePaste}
-                            />
-                        </div>
-                        <div className="bg-gray-900 rounded-lg border border-gray-700 flex flex-col">
-                            <div className="text-sm font-semibold p-2.5 bg-gray-900/50 rounded-t-lg border-b border-gray-700">Output</div>
-                            <pre className={`w-full flex-grow p-4 font-mono text-sm overflow-y-auto whitespace-pre-wrap ${
-                                output.type === 'error' ? 'text-red-400' : 'text-gray-300'
-                            }`}>{output.text}</pre>
-                        </div>
-                    </div>
+                    )}
                 </div>
 
                 {sessionResult && (
-                    <div className="bg-gray-800 p-6 rounded-xl shadow-lg mt-4 flex items-center gap-4 border border-green-500/50">
+                    <div className="bg-gray-800 p-6 rounded-xl shadow-lg flex items-center gap-4 border border-green-500/50">
                         <FontAwesomeIcon icon={faCheckCircle} className="text-4xl text-green-400" />
                         <div>
                             <h2 className="text-2xl font-bold">Session Complete!</h2>

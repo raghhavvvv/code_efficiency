@@ -19,10 +19,12 @@ app.use(cookieParser());
 const authRoutes = require('./routes/auth');
 const apiRoutes = require('./routes/api');
 const adminRoutes = require('./routes/admin');
+const challengeRoutes = require('./routes/challenges');
 
 app.use('/auth', authRoutes);
 app.use('/api', apiRoutes);
 app.use('/admin', adminRoutes);
+app.use('/api/challenges', challengeRoutes);
 
 app.listen(PORT, () => {
     console.log(`✅ Server is running on port ${PORT}`);

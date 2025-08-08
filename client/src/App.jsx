@@ -6,7 +6,8 @@ import ProtectedRoute from './components/ProtectedRoute.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
-import StatsPage from './pages/StatsPage.jsx'; // <-- IMPORT NEW PAGE
+import StatsPage from './pages/StatsPage.jsx';
+import ChallengesPage from './pages/ChallengesPage.jsx';
 
 function App() {
   const { isAuthenticated } = useAuth();
@@ -15,7 +16,9 @@ function App() {
     <Routes>
       <Route path="/" element={<ProtectedRoute />}>
         <Route path="/" element={<DashboardPage />} />
-        <Route path="/stats" element={<StatsPage />} /> {/* <-- ADD NEW ROUTE */}
+        <Route path="/dashboard/:challengeId" element={<DashboardPage />} />
+        <Route path="/challenges" element={<ChallengesPage />} /> 
+        <Route path="/stats" element={<StatsPage />} />
       </Route>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <LoginPage />} />
       <Route path="/register" element={isAuthenticated ? <Navigate to="/" /> : <RegisterPage />} />
