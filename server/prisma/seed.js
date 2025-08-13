@@ -1,69 +1,72 @@
 // server/prisma/seed.js
+
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 async function main() {
     console.log('Start seeding ...');
 
-    // Clean up existing challenges to avoid conflicts on re-seeding
-    await prisma.challenge.deleteMany({});
-    console.log('Deleted old challenges.');
+    // --- Clean up existing data (CORRECTED ORDER) ---
+    // 1. Delete all "child" metric records first.
+    await prisma.keystrokeMetrics.deleteMany();
+    await prisma.idleMetrics.deleteMany();
+    await prisma.focusMetrics.deleteMany();
+    await prisma.errorMetrics.deleteMany();
+    await prisma.taskMetrics.deleteMany();
+    await prisma.pasteEvent.deleteMany();
 
-    const challenges = [
-        {
+    // 2. Now it's safe to delete the "parent" CodingSession records.
+    await prisma.codingSession.deleteMany();
+
+    // 3. Finally, delete the top-level User and Challenge records.
+    await prisma.challenge.deleteMany();
+    await prisma.user.deleteMany();
+    
+    console.log('Cleaned up existing data.');
+
+
+    // --- Create a sample challenge ---
+    // ... (the rest of your file remains exactly the same) ...
+    const challenge1 = await prisma.challenge.create({
+        data: {
             id: 1,
-            title: 'Hello World',
-            description: 'Write a function that returns the string "Hello, World!".',
+            title: 'Hello World Function',
+            description: 'Select a language and write a function that prints "Hello World" to the console.',
             difficulty: 'Easy',
             expectedCompletionTime: 60,
-            optimalKeywords: '["function", "return"]',
+            optimalKeywords: '["function", "return", "console.log", "print"]',
             language: 'javascript'
         },
-        {
-            id: 2,
-            title: 'Sum of Two Numbers',
-            description: 'Create a function that takes two numbers as arguments and returns their sum.',
-            difficulty: 'Easy',
-            expectedCompletionTime: 120,
-            optimalKeywords: '["function", "return", "+"]',
-            language: 'python'
-        },
-        {
-            id: 3,
-            title: 'Reverse a String',
-            description: 'Write a function that takes a string and returns it in reverse order.',
-            difficulty: 'Medium',
-            expectedCompletionTime: 300,
-            optimalKeywords: '["split", "reverse", "join", "loop"]',
-            language: 'javascript'
-        },
-        {
-            id: 4,
-            title: 'Check for Palindrome',
-            description: 'Create a function that checks if a given string is a palindrome (reads the same forwards and backwards). Ignore case and non-alphanumeric characters.',
-            difficulty: 'Medium',
-            expectedCompletionTime: 480,
-            optimalKeywords: '["regex", "replace", "toLowerCase", "reverse"]',
-            language: 'python'
-        },
-        {
-            id: 5,
-            title: 'FizzBuzz',
-            description: 'Write a program that prints the numbers from 1 to 100. For multiples of three print “Fizz” instead of the number and for the multiples of five print “Buzz”. For numbers which are multiples of both three and five print “FizzBuzz”.',
-            difficulty: 'Easy',
-            expectedCompletionTime: 360,
-            optimalKeywords: '["for", "if", "%", "console.log"]',
-            language: 'javascript'
-        }
-    ];
+    });
+    console.log(`Created challenge with id: ${challenge1.id}`);
 
-    for (const challenge of challenges) {
-        await prisma.challenge.create({
-            data: challenge,
-        });
-    }
 
-    console.log(`Seeded ${challenges.length} challenges.`);
+    // --- Create a regular user ---
+    const regularUserPassword = await bcrypt.hash('password123', 10);
+    const regularUser = await prisma.user.create({
+        data: {
+            username: 'testuser',
+            email: 'user@example.com',
+            passwordHash: regularUserPassword,
+            role: 'user',
+        },
+    });
+    console.log(`Created regular user: ${regularUser.email}`);
+
+
+    // --- Create an admin user ---
+    const adminPassword = await bcrypt.hash('adminpassword', 10);
+    const adminUser = await prisma.user.create({
+        data: {
+            username: 'admin',
+            email: 'admin@example.com',
+            passwordHash: adminPassword,
+            role: 'admin',
+        },
+    });
+    console.log(`Created admin user: ${adminUser.email}`);
+
     console.log('Seeding finished.');
 }
 
