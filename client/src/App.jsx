@@ -19,7 +19,9 @@ function App() {
       {/* User Routes */}
       <Route path="/" element={<ProtectedRoute />}>
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/dashboard/:challengeId" element={<DashboardPage />} />
         <Route path="/stats" element={<StatsPage />} />
+        <Route path="/challenges" element={<ChallengesPage />} />
       </Route>
       
       {/* Admin Routes */}

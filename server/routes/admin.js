@@ -68,5 +68,252 @@ router.get('/stats', async (req, res) => {
     }
 });
 
+// GET /admin/metrics/summary - Fetches aggregated metrics summary
+router.get('/metrics/summary', async (req, res) => {
+    try {
+        // Get keystroke metrics averages
+        const keystrokeStats = await prisma.keystrokeMetrics.aggregate({
+            _avg: { typingSpeed: true, efficiencyScore: true },
+            _min: { typingSpeed: true },
+            _max: { typingSpeed: true }
+        });
+
+        // Get error metrics averages
+        const errorStats = await prisma.errorMetrics.aggregate({
+            _avg: { errorFrequency: true, efficiencyScore: true },
+            _min: { errorFrequency: true },
+            _max: { errorFrequency: true }
+        });
+
+        // Get focus metrics averages
+        const focusStats = await prisma.focusMetrics.aggregate({
+            _avg: { efficiencyScore: true },
+            _min: { efficiencyScore: true },
+            _max: { efficiencyScore: true }
+        });
+
+        const totalStudents = await prisma.user.count({ where: { role: 'user' } });
+        const totalSessions = await prisma.codingSession.count({ where: { endTime: { not: null } } });
+
+        res.status(200).json({
+            totalStudents,
+            totalSessions,
+            metrics: {
+                typingSpeed: {
+                    avg: Math.round(keystrokeStats._avg.typingSpeed || 0),
+                    min: Math.round(keystrokeStats._min.typingSpeed || 0),
+                    max: Math.round(keystrokeStats._max.typingSpeed || 0)
+                },
+                errorRate: {
+                    avg: Math.round(errorStats._avg.errorFrequency || 0),
+                    min: errorStats._min.errorFrequency || 0,
+                    max: errorStats._max.errorFrequency || 0
+                },
+                focusScore: {
+                    avg: Math.round(focusStats._avg.efficiencyScore || 0),
+                    min: Math.round(focusStats._min.efficiencyScore || 0),
+                    max: Math.round(focusStats._max.efficiencyScore || 0)
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching metrics summary:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// GET /admin/students/filter - Fetches filtered and sorted student data
+router.get('/students/filter', async (req, res) => {
+    try {
+        const { metric = 'netScore', order = 'desc', limit = 10, minSessions = 1 } = req.query;
+        
+        let orderBy = {};
+        let include = {
+            sessions: {
+                include: {
+                    keystrokeMetrics: true,
+                    errorMetrics: true,
+                    focusMetrics: true,
+                    taskMetrics: true
+                }
+            }
+        };
+
+        // Base query to get users with minimum sessions
+        const users = await prisma.user.findMany({
+            where: {
+                role: 'user',
+                sessions: {
+                    some: {
+                        endTime: { not: null }
+                    }
+                }
+            },
+            include,
+            orderBy: { netScore: order }
+        });
+
+        // Filter users with minimum sessions and calculate metrics
+        const processedUsers = users
+            .map(user => {
+                const completedSessions = user.sessions.filter(s => s.endTime);
+                
+                if (completedSessions.length < parseInt(minSessions)) {
+                    return null;
+                }
+
+                // Calculate aggregated metrics
+                const keystrokeMetrics = completedSessions
+                    .map(s => s.keystrokeMetrics)
+                    .filter(Boolean);
+                
+                const errorMetrics = completedSessions
+                    .map(s => s.errorMetrics)
+                    .filter(Boolean);
+                
+                const focusMetrics = completedSessions
+                    .map(s => s.focusMetrics)
+                    .filter(Boolean);
+
+                const taskMetrics = completedSessions
+                    .map(s => s.taskMetrics)
+                    .filter(Boolean);
+
+                let metricValue = user.netScore;
+
+                switch (metric) {
+                    case 'typingSpeed':
+                        metricValue = keystrokeMetrics.length > 0 
+                            ? Math.round(keystrokeMetrics.reduce((sum, m) => sum + m.typingSpeed, 0) / keystrokeMetrics.length)
+                            : 0;
+                        break;
+                    case 'errorRate':
+                        metricValue = errorMetrics.length > 0 
+                            ? Math.round(errorMetrics.reduce((sum, m) => sum + m.errorFrequency, 0) / errorMetrics.length)
+                            : 0;
+                        break;
+                    case 'focusScore':
+                        metricValue = focusMetrics.length > 0 
+                            ? Math.round(focusMetrics.reduce((sum, m) => sum + (m.efficiencyScore || 0), 0) / focusMetrics.length)
+                            : 0;
+                        break;
+                    case 'keystrokeEfficiency':
+                        metricValue = keystrokeMetrics.length > 0 
+                            ? Math.round(keystrokeMetrics.reduce((sum, m) => sum + (m.efficiencyScore || 0), 0) / keystrokeMetrics.length)
+                            : 0;
+                        break;
+                    case 'completionTime':
+                        metricValue = taskMetrics.length > 0 
+                            ? Math.round(taskMetrics.reduce((sum, m) => sum + (m.completionTime || 0), 0) / taskMetrics.length)
+                            : 0;
+                        break;
+                    default:
+                        metricValue = user.netScore;
+                }
+
+                return {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    netScore: user.netScore,
+                    lastActive: user.lastActive,
+                    sessionCount: completedSessions.length,
+                    metricValue
+                };
+            })
+            .filter(Boolean);
+
+        // Sort by the selected metric
+        processedUsers.sort((a, b) => {
+            if (order === 'desc') {
+                return b.metricValue - a.metricValue;
+            } else {
+                return a.metricValue - b.metricValue;
+            }
+        });
+
+        // Apply limit
+        const limitedResults = processedUsers.slice(0, parseInt(limit));
+
+        res.status(200).json({
+            results: limitedResults,
+            total: processedUsers.length
+        });
+    } catch (error) {
+        console.error("Error fetching filtered students:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// GET /admin/students/export - Export student data
+router.get('/students/export', async (req, res) => {
+    try {
+        const { format = 'json' } = req.query;
+        
+        const users = await prisma.user.findMany({
+            where: { role: 'user' },
+            include: {
+                sessions: {
+                    include: {
+                        keystrokeMetrics: true,
+                        errorMetrics: true,
+                        focusMetrics: true,
+                        taskMetrics: true,
+                        idleMetrics: true
+                    }
+                }
+            }
+        });
+
+        const exportData = users.map(user => {
+            const completedSessions = user.sessions.filter(s => s.endTime);
+            
+            // Calculate aggregated metrics
+            const keystrokeMetrics = completedSessions.map(s => s.keystrokeMetrics).filter(Boolean);
+            const errorMetrics = completedSessions.map(s => s.errorMetrics).filter(Boolean);
+            const focusMetrics = completedSessions.map(s => s.focusMetrics).filter(Boolean);
+            
+            return {
+                username: user.username,
+                email: user.email,
+                netScore: user.netScore,
+                lastActive: user.lastActive,
+                totalSessions: completedSessions.length,
+                avgTypingSpeed: keystrokeMetrics.length > 0 
+                    ? Math.round(keystrokeMetrics.reduce((sum, m) => sum + m.typingSpeed, 0) / keystrokeMetrics.length)
+                    : 0,
+                avgErrorRate: errorMetrics.length > 0 
+                    ? Math.round(errorMetrics.reduce((sum, m) => sum + m.errorFrequency, 0) / errorMetrics.length)
+                    : 0,
+                avgFocusScore: focusMetrics.length > 0 
+                    ? Math.round(focusMetrics.reduce((sum, m) => sum + (m.efficiencyScore || 0), 0) / focusMetrics.length)
+                    : 0
+            };
+        });
+
+        if (format === 'csv') {
+            // Convert to CSV
+            const headers = Object.keys(exportData[0] || {});
+            const csvContent = [
+                headers.join(','),
+                ...exportData.map(row => 
+                    headers.map(header => 
+                        typeof row[header] === 'string' ? `"${row[header]}"` : row[header]
+                    ).join(',')
+                )
+            ].join('\n');
+            
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', 'attachment; filename="student_data.csv"');
+            res.send(csvContent);
+        } else {
+            res.status(200).json(exportData);
+        }
+    } catch (error) {
+        console.error("Error exporting student data:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 
 module.exports = router;
