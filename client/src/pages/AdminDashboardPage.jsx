@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { Bar } from 'react-chartjs-2';
 import Navbar from '../components/Navbar.jsx';
 import AdminReportingSection from '../components/AdminReportingSection.jsx';
+import AdminChallengeSection from '../components/AdminChallengeSection.jsx';
 import api from '../services/api.js';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSpinner, faUsers, faCodeBranch, faChartLine, faFileExport } from '@fortawesome/free-solid-svg-icons';
+import { faSpinner, faUsers, faCodeBranch, faChartLine, faFileExport, faCode } from '@fortawesome/free-solid-svg-icons';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
@@ -67,7 +68,8 @@ const AdminDashboardPage = () => {
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: faChartLine },
-        { id: 'reports', label: 'Performance Reports', icon: faFileExport }
+        { id: 'reports', label: 'Performance Reports', icon: faFileExport },
+        { id: 'challenges', label: 'Challenge Management', icon: faCode }
     ];
 
     return (
@@ -155,6 +157,10 @@ const AdminDashboardPage = () => {
 
                 {activeTab === 'reports' && (
                     <AdminReportingSection />
+                )}
+
+                {activeTab === 'challenges' && (
+                    <AdminChallengeSection />
                 )}
             </main>
         </div>

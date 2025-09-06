@@ -125,7 +125,7 @@ router.get('/metrics/summary', async (req, res) => {
 // GET /admin/students/filter - Fetches filtered and sorted student data
 router.get('/students/filter', async (req, res) => {
     try {
-        const { metric = 'netScore', order = 'desc', limit = 10, minSessions = 1 } = req.query;
+        const { metric = 'netScore', order = 'desc', limit = 10, minSessions = 1, search = '' } = req.query;
         
         let orderBy = {};
         let include = {
@@ -221,7 +221,19 @@ router.get('/students/filter', async (req, res) => {
                     metricValue
                 };
             })
-            .filter(Boolean);
+            .filter(Boolean)
+            .filter(user => {
+                // Apply search filter
+                if (!search) return true;
+                
+                const searchLower = search.toLowerCase();
+                return (
+                    user.username.toLowerCase().includes(searchLower) ||
+                    user.email.toLowerCase().includes(searchLower) ||
+                    user.metricValue.toString().includes(searchLower) ||
+                    user.netScore.toString().includes(searchLower)
+                );
+            });
 
         // Sort by the selected metric
         processedUsers.sort((a, b) => {
@@ -315,5 +327,140 @@ router.get('/students/export', async (req, res) => {
     }
 });
 
+
+// Challenge Management Routes
+
+// GET /admin/challenges - Get all challenges
+router.get('/challenges', async (req, res) => {
+    try {
+        const challenges = await prisma.challenge.findMany({
+            orderBy: { id: 'desc' }
+        });
+        
+        // Map database fields to admin interface fields
+        const mappedChallenges = challenges.map(challenge => ({
+            id: challenge.id,
+            title: challenge.title,
+            description: challenge.description,
+            difficulty: challenge.difficulty,
+            language: challenge.language,
+            timeLimit: Math.round(challenge.expectedCompletionTime / 60), // Convert seconds to minutes
+            starterCode: '', // Not in current schema
+            testCases: challenge.optimalKeywords || '',
+            expectedOutput: '' // Not in current schema
+        }));
+        
+        res.json(mappedChallenges);
+    } catch (error) {
+        console.error("Error fetching challenges:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// POST /admin/challenges - Create new challenge
+router.post('/challenges', async (req, res) => {
+    try {
+        const {
+            title,
+            description,
+            difficulty,
+            language,
+            starterCode,
+            testCases,
+            expectedOutput,
+            timeLimit
+        } = req.body;
+
+        // Validate required fields
+        if (!title || !description || !difficulty || !language) {
+            return res.status(400).json({ 
+                error: "Title, description, difficulty, and language are required" 
+            });
+        }
+
+        const challenge = await prisma.challenge.create({
+            data: {
+                title,
+                description,
+                difficulty,
+                language,
+                expectedCompletionTime: (parseInt(timeLimit) || 30) * 60, // Convert minutes to seconds
+                optimalKeywords: testCases || ''
+            }
+        });
+
+        res.status(201).json(challenge);
+    } catch (error) {
+        console.error("Error creating challenge:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// PUT /admin/challenges/:id - Update challenge
+router.put('/challenges/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            title,
+            description,
+            difficulty,
+            language,
+            starterCode,
+            testCases,
+            expectedOutput,
+            timeLimit
+        } = req.body;
+
+        const challenge = await prisma.challenge.update({
+            where: { id: parseInt(id) },
+            data: {
+                title,
+                description,
+                difficulty,
+                language,
+                expectedCompletionTime: (parseInt(timeLimit) || 30) * 60, // Convert minutes to seconds
+                optimalKeywords: testCases || ''
+            }
+        });
+
+        res.json(challenge);
+    } catch (error) {
+        if (error.code === 'P2025') {
+            return res.status(404).json({ error: "Challenge not found" });
+        }
+        console.error("Error updating challenge:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// DELETE /admin/challenges/:id - Delete challenge
+router.delete('/challenges/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Check if challenge has associated sessions
+        const sessionsCount = await prisma.codingSession.count({
+            where: { challengeId: parseInt(id) }
+        });
+
+        if (sessionsCount > 0) {
+            return res.status(400).json({ 
+                error: "Cannot delete challenge with existing coding sessions" 
+            });
+        }
+
+        await prisma.challenge.delete({
+            where: { id: parseInt(id) }
+        });
+
+        res.json({ message: "Challenge deleted successfully" });
+    } catch (error) {
+        if (error.code === 'P2025') {
+            return res.status(404).json({ error: "Challenge not found" });
+        }
+        console.error("Error deleting challenge:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
 
 module.exports = router;

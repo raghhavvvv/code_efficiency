@@ -10,9 +10,38 @@ import {
     faExclamationTriangle,
     faEye,
     faClock,
-    faChartBar
+    faChartBar,
+    faChartLine,
+    faChartPie,
+    faUsers,
+    faCalendarAlt
 } from '@fortawesome/free-solid-svg-icons';
+import {
+    Chart as ChartJS,
+    CategoryScale,
+    LinearScale,
+    BarElement,
+    LineElement,
+    PointElement,
+    ArcElement,
+    Title,
+    Tooltip,
+    Legend,
+} from 'chart.js';
+import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import api from '../services/api.js';
+
+ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    BarElement,
+    LineElement,
+    PointElement,
+    ArcElement,
+    Title,
+    Tooltip,
+    Legend
+);
 
 const AdminReportingSection = () => {
     const [students, setStudents] = useState([]);
@@ -26,6 +55,13 @@ const AdminReportingSection = () => {
     const [sortOrder, setSortOrder] = useState('desc');
     const [resultLimit, setResultLimit] = useState(10);
     const [minSessions, setMinSessions] = useState(1);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [chartData, setChartData] = useState({
+        performanceDistribution: null,
+        metricComparison: null,
+        sessionActivity: null,
+        skillBreakdown: null
+    });
 
     const metricOptions = [
         { value: 'netScore', label: 'Overall NET Score', icon: faTrophy },
@@ -43,7 +79,13 @@ const AdminReportingSection = () => {
 
     useEffect(() => {
         fetchFilteredStudents();
-    }, [selectedMetric, sortOrder, resultLimit, minSessions]);
+    }, [selectedMetric, sortOrder, resultLimit, minSessions, searchQuery]);
+
+    useEffect(() => {
+        if (filteredStudents.length > 0) {
+            generateChartData();
+        }
+    }, [filteredStudents]);
 
     const fetchMetricsSummary = async () => {
         try {
@@ -62,7 +104,8 @@ const AdminReportingSection = () => {
                     metric: selectedMetric,
                     order: sortOrder,
                     limit: resultLimit,
-                    minSessions: minSessions
+                    minSessions: minSessions,
+                    search: searchQuery
                 }
             });
             setFilteredStudents(response.data.results);
@@ -73,11 +116,129 @@ const AdminReportingSection = () => {
         }
     };
 
+    const generateChartData = () => {
+        if (!filteredStudents.length) return;
+
+        // Performance Distribution Chart
+        const scoreRanges = ['0-20', '21-40', '41-60', '61-80', '81-100'];
+        const distribution = scoreRanges.map(range => {
+            const [min, max] = range.split('-').map(Number);
+            return filteredStudents.filter(student => 
+                student.netScore >= min && student.netScore <= max
+            ).length;
+        });
+
+        const performanceDistribution = {
+            labels: scoreRanges,
+            datasets: [{
+                label: 'Number of Students',
+                data: distribution,
+                backgroundColor: [
+                    'rgba(239, 68, 68, 0.8)',   // red
+                    'rgba(245, 158, 11, 0.8)',  // amber
+                    'rgba(59, 130, 246, 0.8)',  // blue
+                    'rgba(16, 185, 129, 0.8)',  // emerald
+                    'rgba(34, 197, 94, 0.8)'    // green
+                ],
+                borderColor: [
+                    'rgba(239, 68, 68, 1)',
+                    'rgba(245, 158, 11, 1)',
+                    'rgba(59, 130, 246, 1)',
+                    'rgba(16, 185, 129, 1)',
+                    'rgba(34, 197, 94, 1)'
+                ],
+                borderWidth: 2
+            }]
+        };
+
+        // Metric Comparison Chart
+        const topStudents = filteredStudents.slice(0, 10);
+        const metricComparison = {
+            labels: topStudents.map(s => s.username),
+            datasets: [{
+                label: 'NET Score',
+                data: topStudents.map(s => s.netScore),
+                backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                borderColor: 'rgba(34, 197, 94, 1)',
+                borderWidth: 2
+            }, {
+                label: 'Metric Value',
+                data: topStudents.map(s => s.metricValue),
+                backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                borderColor: 'rgba(59, 130, 246, 1)',
+                borderWidth: 2
+            }]
+        };
+
+        // Session Activity Chart
+        const sessionCounts = {};
+        filteredStudents.forEach(student => {
+            const count = student.sessionCount;
+            sessionCounts[count] = (sessionCounts[count] || 0) + 1;
+        });
+
+        const sessionActivity = {
+            labels: Object.keys(sessionCounts).sort((a, b) => Number(a) - Number(b)),
+            datasets: [{
+                label: 'Students',
+                data: Object.keys(sessionCounts).sort((a, b) => Number(a) - Number(b)).map(key => sessionCounts[key]),
+                fill: true,
+                backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                borderColor: 'rgba(168, 85, 247, 1)',
+                borderWidth: 3,
+                pointBackgroundColor: 'rgba(168, 85, 247, 1)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 6
+            }]
+        };
+
+        // Skill Breakdown (Performance Levels)
+        const excellent = filteredStudents.filter(s => s.netScore >= 80).length;
+        const good = filteredStudents.filter(s => s.netScore >= 60 && s.netScore < 80).length;
+        const average = filteredStudents.filter(s => s.netScore >= 40 && s.netScore < 60).length;
+        const needsImprovement = filteredStudents.filter(s => s.netScore < 40).length;
+
+        const skillBreakdown = {
+            labels: ['Excellent (80+)', 'Good (60-79)', 'Average (40-59)', 'Needs Improvement (<40)'],
+            datasets: [{
+                data: [excellent, good, average, needsImprovement],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.8)',   // green
+                    'rgba(59, 130, 246, 0.8)',  // blue
+                    'rgba(245, 158, 11, 0.8)',  // amber
+                    'rgba(239, 68, 68, 0.8)'    // red
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(59, 130, 246, 1)',
+                    'rgba(245, 158, 11, 1)',
+                    'rgba(239, 68, 68, 1)'
+                ],
+                borderWidth: 2
+            }]
+        };
+
+        setChartData({
+            performanceDistribution,
+            metricComparison,
+            sessionActivity,
+            skillBreakdown
+        });
+    };
+
     const handleExport = async (format) => {
         setExportLoading(true);
         try {
             const response = await api.get('/admin/students/export', {
-                params: { format },
+                params: { 
+                    format,
+                    metric: selectedMetric,
+                    order: sortOrder,
+                    limit: resultLimit,
+                    minSessions: minSessions,
+                    search: searchQuery
+                },
                 responseType: format === 'csv' ? 'blob' : 'json'
             });
 
@@ -153,44 +314,229 @@ const AdminReportingSection = () => {
                 </div>
             </div>
 
-            {/* Metrics Summary Cards */}
+            {/* Metrics Summary */}
             {metricsSummary && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                        <h3 className="text-sm text-gray-400 mb-2">Avg Typing Speed</h3>
-                        <p className="text-2xl font-bold text-cyan-400">
-                            {metricsSummary.metrics.typingSpeed.avg} WPM
-                        </p>
-                        <p className="text-xs text-gray-500">
-                            Range: {metricsSummary.metrics.typingSpeed.min} - {metricsSummary.metrics.typingSpeed.max}
-                        </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-gray-800 p-6 rounded-xl">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-gray-400 text-sm">Total Students</p>
+                                <p className="text-3xl font-bold text-white">{metricsSummary.totalStudents}</p>
+                            </div>
+                            <FontAwesomeIcon icon={faUsers} className="text-cyan-400 text-2xl" />
+                        </div>
                     </div>
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                        <h3 className="text-sm text-gray-400 mb-2">Avg Error Rate</h3>
-                        <p className="text-2xl font-bold text-red-400">
-                            {metricsSummary.metrics.errorRate.avg}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                            Range: {metricsSummary.metrics.errorRate.min} - {metricsSummary.metrics.errorRate.max}
-                        </p>
+                    <div className="bg-gray-800 p-6 rounded-xl">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-gray-400 text-sm">Avg NET Score</p>
+                                <p className="text-3xl font-bold text-green-400">{metricsSummary.averageNetScore}</p>
+                            </div>
+                            <FontAwesomeIcon icon={faTrophy} className="text-green-400 text-2xl" />
+                        </div>
                     </div>
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                        <h3 className="text-sm text-gray-400 mb-2">Avg Focus Score</h3>
-                        <p className="text-2xl font-bold text-purple-400">
-                            {metricsSummary.metrics.focusScore.avg}%
-                        </p>
-                        <p className="text-xs text-gray-500">
-                            Range: {metricsSummary.metrics.focusScore.min} - {metricsSummary.metrics.focusScore.max}
-                        </p>
+                    <div className="bg-gray-800 p-6 rounded-xl">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-gray-400 text-sm">Total Sessions</p>
+                                <p className="text-3xl font-bold text-blue-400">{metricsSummary.totalSessions}</p>
+                            </div>
+                            <FontAwesomeIcon icon={faKeyboard} className="text-blue-400 text-2xl" />
+                        </div>
                     </div>
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                        <h3 className="text-sm text-gray-400 mb-2">Total Students</h3>
-                        <p className="text-2xl font-bold text-green-400">
-                            {metricsSummary.totalStudents}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                            {metricsSummary.totalSessions} sessions
-                        </p>
+                    <div className="bg-gray-800 p-6 rounded-xl">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-gray-400 text-sm">Active This Week</p>
+                                <p className="text-3xl font-bold text-purple-400">{metricsSummary.activeThisWeek}</p>
+                            </div>
+                            <FontAwesomeIcon icon={faCalendarAlt} className="text-purple-400 text-2xl" />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Performance Analytics Charts */}
+            {chartData.performanceDistribution && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Performance Distribution Chart */}
+                    <div className="bg-gray-800 p-6 rounded-xl">
+                        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                            <FontAwesomeIcon icon={faChartBar} />
+                            Performance Distribution
+                        </h3>
+                        <div className="h-80">
+                            <Bar 
+                                data={chartData.performanceDistribution}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: {
+                                            labels: { color: '#e5e7eb' }
+                                        },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: (context) => `${context.parsed.y} students`
+                                            }
+                                        }
+                                    },
+                                    scales: {
+                                        x: { 
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { color: '#374151' }
+                                        },
+                                        y: { 
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { color: '#374151' }
+                                        }
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="mt-4 text-sm text-gray-400">
+                            Distribution of NET scores across all filtered students
+                        </div>
+                    </div>
+
+                    {/* Skill Level Breakdown */}
+                    <div className="bg-gray-800 p-6 rounded-xl">
+                        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                            <FontAwesomeIcon icon={faChartPie} />
+                            Skill Level Breakdown
+                        </h3>
+                        <div className="h-80">
+                            <Doughnut 
+                                data={chartData.skillBreakdown}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: {
+                                            position: 'bottom',
+                                            labels: { 
+                                                color: '#e5e7eb',
+                                                padding: 20
+                                            }
+                                        },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: (context) => {
+                                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                                    const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                                    return `${context.label}: ${context.parsed} students (${percentage}%)`;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="mt-4 text-sm text-gray-400">
+                            Performance categories based on NET scores
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Detailed Analytics */}
+            {chartData.metricComparison && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Top Performers Comparison */}
+                    <div className="bg-gray-800 p-6 rounded-xl">
+                        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                            <FontAwesomeIcon icon={faChartBar} />
+                            Top 10 Performers - Metric Comparison
+                        </h3>
+                        <div className="h-80">
+                            <Bar 
+                                data={chartData.metricComparison}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: {
+                                            labels: { color: '#e5e7eb' }
+                                        },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: (context) => {
+                                                    const metric = context.datasetIndex === 0 ? 'NET Score' : 
+                                                        metricOptions.find(opt => opt.value === selectedMetric)?.label || 'Metric';
+                                                    return `${metric}: ${formatMetricValue(context.parsed.y, selectedMetric)}`;
+                                                }
+                                            }
+                                        }
+                                    },
+                                    scales: {
+                                        x: { 
+                                            ticks: { 
+                                                color: '#9ca3af',
+                                                maxRotation: 45
+                                            },
+                                            grid: { color: '#374151' }
+                                        },
+                                        y: { 
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { color: '#374151' }
+                                        }
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="mt-4 text-sm text-gray-400">
+                            Comparing NET scores with selected metric for top performers
+                        </div>
+                    </div>
+
+                    {/* Session Activity Distribution */}
+                    <div className="bg-gray-800 p-6 rounded-xl">
+                        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                            <FontAwesomeIcon icon={faChartLine} />
+                            Session Activity Distribution
+                        </h3>
+                        <div className="h-80">
+                            <Line 
+                                data={chartData.sessionActivity}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: {
+                                            labels: { color: '#e5e7eb' }
+                                        },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: (context) => `${context.parsed.y} students with ${context.label} sessions`
+                                            }
+                                        }
+                                    },
+                                    scales: {
+                                        x: { 
+                                            title: {
+                                                display: true,
+                                                text: 'Number of Sessions',
+                                                color: '#9ca3af'
+                                            },
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { color: '#374151' }
+                                        },
+                                        y: { 
+                                            title: {
+                                                display: true,
+                                                text: 'Number of Students',
+                                                color: '#9ca3af'
+                                            },
+                                            ticks: { color: '#9ca3af' },
+                                            grid: { color: '#374151' }
+                                        }
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="mt-4 text-sm text-gray-400">
+                            How many students have completed each number of sessions
+                        </div>
                     </div>
                 </div>
             )}
@@ -201,6 +547,19 @@ const AdminReportingSection = () => {
                     <FontAwesomeIcon icon={faFilter} />
                     Performance Filters
                 </h3>
+                
+                {/* Search Bar */}
+                <div className="mb-6">
+                    <label className="block text-sm text-gray-400 mb-2">Search Students</label>
+                    <input
+                        type="text"
+                        placeholder="Search by name, email, or metric value..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-400 focus:outline-none"
+                    />
+                </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-sm text-gray-400 mb-2">Metric</label>
